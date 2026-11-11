@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enumeraciones ────────────────────────────────────────────────────────────
+
+enum TipoPersona {
+  cliente
+  proveedor
+}
+
+enum TipoPedido {
+  compra
+  venta
+}
+
+enum EstadoAsesoriaCobro {
+  pendiente
+  pagada
+}
+
+enum TipoItem {
+  bien
+  servicio
+}
+
+/**
+ * Movimiento con el proveedor en un pedido:
+ * - `pago`: le pagás (liquida costo).
+ * - `cobro`: te paga él (reduce lo debido por costo).
+ * - `ingreso_cliente_a_proveedor`: dinero que clientes finales pagaron al proveedor (no liquida costo; solo trazabilidad en venta sin cliente).
+ */
+enum TipoPagoProveedor {
+  pago
+  cobro
+  ingreso_cliente_a_proveedor
+}
+
+/** Workspace de negocio (pedidos, personas) vs. finanzas personales. */
+enum TipoWallet {
+  empresa
+  personal
+}
+
+// ─── Modelos ──────────────────────────────────────────────────────────────────
+
+// Usuario: cuenta de acceso al sistema (SaaS)
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  nombre       String
+  createdAt    DateTime @default(now())
+
+  wallets               Wallet[]
+  passwordResetTokens   PasswordResetToken[]
+
+  @@map("usuarios")
+}
+
+/** Token de un solo uso para restablecer contraseña (hash SHA-256 del token en claro enviado por email). */
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  usuarioId Int
+  tokenHash String    @db.VarChar(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([usuarioId])
+  @@map("password_reset_tokens")
+}
+
+// PerfilEmpresa: datos de empresa por workspace empresa (PDFs y cotizaciones); una fila por wallet.
+model PerfilEmpresa {
+  id                     Int     @id @default(autoincrement())
+  walletId               Int     @unique
+  nombreEmpresa          String?
+  logoBase64             String? @db.Text
+  /** URL HTTPS del logo (p. ej. Cloudinary); preferida en PDFs. */
+  logoUrl                String?
+  /** public_id en Cloudinary para reemplazar o borrar el asset. */
+  logoCloudinaryPublicId String?
+  direccion              String?
+  email                  String?
+  telefono               String?
+  nit                    String?
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("perfiles_empresa")
+}
+
+// Wallet: espacio de trabajo aislado (empresa, personal, etc.)
+model Wallet {
+  id          Int        @id @default(autoincrement())
+  usuarioId   Int?
+  nombre      String
+  descripcion String?
+  color       String     @default("#2563EB")
+  tipo        TipoWallet @default(empresa)
+  createdAt   DateTime   @default(now())
+
+  usuario            Usuario?            @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  perfilEmpresa      PerfilEmpresa?
+  personas           Persona[]
+  gastos             Gasto[]
+  productos          Producto[]
+  ingresosPersonales IngresoPersonal[]
+  deudasPersonales   DeudaPersonal[]
+  ahorrosPersonales  AhorroPersonal[]
+  presupuestos       PresupuestoPersonal[]
+  categoriasGasto    CategoriaGasto[]
+
+  @@map("wallets")
+}
+
+/** Categoría de gasto personalizada por workspace (reutilizable al crear gastos). */
+model CategoriaGasto {
+  id        Int      @id @default(autoincrement())
+  walletId  Int
+  nombre    String
+  createdAt DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([walletId, nombre])
+  @@map("categorias_gasto")
+}
+
+// Ingreso registrado en un workspace personal (no es venta de pedido).
+model IngresoPersonal {
+  id          Int      @id @default(autoincrement())
+  walletId    Int
+  descripcion String
+  monto       Float
+  fecha       DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("ingresos_personales")
+}
+
+model DeudaPersonal {
+  id            Int      @id @default(autoincrement())
+  walletId      Int
+  titulo        String
+  montoOriginal Float
+  montoPagado   Float    @default(0)
+  fecha         DateTime @default(now())
+  notas         String?
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("deudas_personales")
+}
+
+model AhorroPersonal {
+  id          Int      @id @default(autoincrement())
+  walletId    Int
+  nombre      String
+  metaMonto   Float?
+  montoActual Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("ahorros_personales")
+}
+
+/** Rubro de presupuesto mensual (workspace personal): renta, gasolina, comida, etc. */
+model PresupuestoPersonal {
+  id          Int      @id @default(autoincrement())
+  walletId    Int
+  anio        Int
+  mes         Int
+  nombre      String
+  montoLimite Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  wallet Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  gastos Gasto[]
+
+  @@unique([walletId, anio, mes, nombre])
+  @@map("presupuestos_personales")
+}
+
+// Producto: catálogo de productos/servicios por wallet
+model Producto {
+  id                        Int      @id @default(autoincrement())
+  walletId                  Int
+  nombre                    String
+  tipo                      TipoItem @default(bien)
+  precioProveedor           Float    @default(0)
+  precioEmpresa             Float    @default(0)
+  /** URL HTTPS de la foto (Cloudinary); opcional. */
+  imagenUrl                 String?
+  imagenCloudinaryPublicId  String?
+  createdAt                 DateTime @default(now())
+
+  wallet      Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  itemsPedido ItemPedido[]
+
+  @@map("productos")
+}
+
+// Persona: cliente o proveedor asociado a un wallet
+model Persona {
+  id        Int         @id @default(autoincrement())
+  walletId  Int?
+  nombre    String
+  tipo      TipoPersona
+  /** NIT u otro identificador fiscal (opcional). */
+  nit       String?
+  direccion String?
+  email     String?
+  telefono  String?
+  createdAt DateTime    @default(now())
+
+  wallet           Wallet?               @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  pedidos          Pedido[]              @relation("ClientePedido")
+  pedidosProveedor Pedido[]              @relation("ProveedorPedido")
+  asesoriaSuscripcion AsesoriaSuscripcion?
+
+  @@map("personas")
+}
+
+// Pedido: orden de compra o venta asociada a una persona
+// Venta: normalmente `persona` = cliente; si no hay cliente conocido, `personaId` null y `proveedorId` obligatorio (costo / intermediación).
+// Compra: `personaId` = proveedor (siempre obligatorio).
+model Pedido {
+  id                 Int        @id @default(autoincrement())
+  personaId          Int?
+  proveedorId        Int?       // proveedor asociado (ventas con o sin cliente; en compras suele ir null y el proveedor es `persona`)
+  tipo               TipoPedido
+  nombreReferencia   String?    // título opcional (listas, PDFs, cotización)
+  impuesto           Float?     // porcentaje de impuesto opcional (ej: 5, 12, 15)
+  /** true = venta creada con modo "venta proveedor" (cliente paga al proveedor, proveedor reparte margen a empresa) */
+  esIntermediacion   Boolean    @default(false)
+  fecha              DateTime   @default(now())
+  createdAt          DateTime   @default(now())
+
+  persona          Persona?        @relation("ClientePedido",   fields: [personaId],   references: [id], onDelete: Cascade)
+  proveedor        Persona?        @relation("ProveedorPedido", fields: [proveedorId], references: [id], onDelete: SetNull)
+  items            ItemPedido[]
+  pagos            Pago[]
+  pagosProveedor   PagoProveedor[]
+
+  @@map("pedidos")
+}
+
+// PagoProveedor: pagos al proveedor o cobros que te hace (intermediación / saldos cruzados)
+model PagoProveedor {
+  id       Int               @id @default(autoincrement())
+  pedidoId Int
+  monto    Float
+  fecha    DateTime          @default(now())
+  tipo     TipoPagoProveedor @default(pago)
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("pagos_proveedor")
+}
+
+// ItemPedido: bien o servicio dentro de un pedido (puede venir del catálogo)
+model ItemPedido {
+  id           Int      @id @default(autoincrement())
+  pedidoId     Int
+  productoId   Int?
+  tipo         TipoItem
+  nombre       String
+  cantidad     Float
+  precioCompra Float
+  precioVenta  Float
+
+  pedido   Pedido    @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  producto Producto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+
+  @@map("items_pedido")
+}
+
+// Pago: abono realizado a un pedido
+model Pago {
+  id       Int      @id @default(autoincrement())
+  pedidoId Int
+  monto    Float
+  fecha    DateTime @default(now())
+
+  pedido Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  @@map("pagos")
+}
+
+// Gasto: egreso personal o del negocio asociado a un wallet
+model Gasto {
+  id                    Int      @id @default(autoincrement())
+  walletId              Int?
+  descripcion           String
+  monto                 Float
+  fecha                 DateTime @default(now())
+  categoria             String?
+  presupuestoPersonalId Int?
+
+  wallet              Wallet?              @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  presupuestoPersonal PresupuestoPersonal? @relation(fields: [presupuestoPersonalId], references: [id], onDelete: SetNull)
+
+  @@map("gastos")
+}
+
+// Asesoría mensual (suscripción) por cliente — un registro por persona.
+model AsesoriaSuscripcion {
+  id           Int      @id @default(autoincrement())
+  personaId    Int      @unique
+  montoMensual Float
+  /** Porcentaje IVA (ej. 12). null o omitido = sin IVA / sin factura. */
+  impuestoPct  Float?
+  activa       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  persona Persona         @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  cobros  AsesoriaCobro[]
+
+  @@map("asesorias_suscripcion")
+}
+
+// Cobro mensual de una asesoría (pendiente hasta marcar pagada).
+model AsesoriaCobro {
+  id            Int                 @id @default(autoincrement())
+  suscripcionId Int
+  anio          Int
+  mes           Int
+  montoBase     Float
+  montoIva      Float               @default(0)
+  montoTotal    Float
+  estado        EstadoAsesoriaCobro @default(pendiente)
+  fechaRegistro DateTime            @default(now())
+  fechaPago     DateTime?
+
+  suscripcion AsesoriaSuscripcion @relation(fields: [suscripcionId], references: [id], onDelete: Cascade)
+
+  @@unique([suscripcionId, anio, mes])
+  @@map("asesorias_cobro")
+}

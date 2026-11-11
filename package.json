@@ -1,0 +1,56 @@
+{
+  "name": "backend-pedidos",
+  "version": "1.0.0",
+  "description": "Backend para gestión de pedidos, cuentas y gastos personales",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "node dist/main",
+    "start:dev": "ts-node -r tsconfig-paths/register src/main.ts",
+    "prisma:migrate": "./node_modules/.bin/prisma migrate dev",
+    "prisma:generate": "./node_modules/.bin/prisma generate",
+    "prisma:studio": "./node_modules/.bin/prisma studio",
+    "prisma:seed": "./node_modules/.bin/ts-node prisma/seed.ts",
+    "test:asesorias-periodos": "ts-node -r tsconfig-paths/register src/asesorias/ejecutar-verificacion-periodos.ts",
+    "test:estadisticas": "ts-node -r tsconfig-paths/register src/estadisticas/ejecutar-verificacion-estadisticas.ts"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/config": "^3.3.0",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-express": "^10.4.15",
+    "@prisma/adapter-neon": "^7.7.0",
+    "@prisma/client": "^6.6.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/passport-jwt": "^4.0.1",
+    "bcryptjs": "^3.0.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "cloudinary": "^2.9.0",
+    "dotenv": "^17.4.2",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "prisma": "^6.6.0",
+    "reflect-metadata": "^0.2.2",
+    "resend": "^4.8.0",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.9",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.1",
+    "ts-node": "^10.9.2",
+    "tsc-alias": "^1.8.10",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.8.3"
+  }
+}
