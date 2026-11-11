@@ -5,7 +5,7 @@ API REST para la gestión de pedidos, clientes, proveedores, pagos y gastos.
 **Desarrollado por:** Vinicio Valdez  
 **Tecnología:** NestJS + Prisma + PostgreSQL (Neon)  
 **Desplegado en:** Google Cloud Run  
-**URL producción:** `https://pedidos-backend-4jbtgazerq-uc.a.run.app/api`
+
 
 ---
 
@@ -77,6 +77,7 @@ src/
 ## Endpoints
 
 ### Personas
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/personas` | Lista todas las personas |
@@ -85,6 +86,7 @@ src/
 | DELETE | `/api/personas/:id` | Eliminar persona (elimina sus pedidos en cascada) |
 
 ### Pedidos
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/pedidos` | Lista todos los pedidos con resumen calculado |
@@ -94,6 +96,7 @@ src/
 | POST | `/api/pedidos/:id/pagos` | Registrar un pago (valida que no exceda el saldo) |
 
 ### Gastos
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/gastos` | Lista todos los gastos |
@@ -101,6 +104,7 @@ src/
 | DELETE | `/api/gastos/:id` | Eliminar gasto |
 
 ### Estadísticas
+
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/api/estadisticas` | Ganancia neta, ingresos, costos, gastos e histórico 6 meses |
@@ -110,7 +114,9 @@ src/
 ## Lógica de negocio importante
 
 ### Cálculo de resumen de pedido
+
 Cada pedido devuelve campos calculados (no almacenados en BD):
+
 - `totalCompra` — suma de `precioCompra × cantidad` de cada ítem
 - `totalVenta` — suma de `precioVenta × cantidad` de cada ítem
 - `totalPagado` — suma de todos los pagos registrados
@@ -120,10 +126,12 @@ Cada pedido devuelve campos calculados (no almacenados en BD):
 > **Regla:** Para pedidos de tipo `venta`, el `saldoPendiente` se calcula sobre `totalVenta`. Para pedidos de tipo `compra`, se calcula sobre `totalCompra`.
 
 ### Validaciones en pagos
+
 - No se puede registrar un pago si el pedido ya está en estado `pagado`
 - El monto del pago no puede superar el `saldoPendiente`
 
 ### Cálculo de estadísticas
+
 - `totalIngresos` = suma de `totalVenta` de pedidos tipo `venta`
 - `totalCostoVentas` = suma de `totalCompra` de esos mismos pedidos
 - `gananciaBruta` = totalIngresos − totalCostoVentas
